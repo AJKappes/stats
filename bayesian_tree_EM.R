@@ -1151,11 +1151,15 @@ for (i in 1:lrparams) {
 }
 
 # plot results
-plot(data$x, data$y, xlab = 'x', ylab = 'y')
-points(data[data$z < 0.5, 'x'], data[data$z < 0.5, 'yfit'],
-       col = 'red', pch = 19, cex = 1)
-points(data[data$z > 0.5, 'x'], data[data$z > 0.5, 'yfit'],
-       col = 'blue', pch = 19, cex = 1)
-title(main = 'Generated Treatment Data and EM Extension Prediction')
-legend("topleft", pch = 19, col = c('blue', 'red'), box.lty = 0,
-       legend = c('Yhat | Z = 1', 'Yhat | Z = 0'))
+EM_ext_plot <- function() {
+  
+  plot(data$x, data$y, xlab = 'x', ylab = 'y')
+  points(data[data$z < 0.5, 'x'], data[data$z < 0.5, 'yfit'],
+         col = 'red', pch = 19, cex = 1)
+  points(data[data$z > 0.5, 'x'], data[data$z > 0.5, 'yfit'],
+         col = 'blue', pch = 19, cex = 1)
+  title(main = 'Generated Treatment Data and EM Extension Prediction')
+  legend("topleft", pch = 19, col = c('blue', 'red'), box.lty = 0,
+         legend = c('Yhat | Z = 1', 'Yhat | Z = 0'))
+  
+}
