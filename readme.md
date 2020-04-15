@@ -1,1 +1,1 @@
-Repository hold various stats projects within respective directories
+Repository holds various stats projects within respective directories
