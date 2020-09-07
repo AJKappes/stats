@@ -58,9 +58,7 @@ cat('True X covariates indice:', p_idx,
     '\n')
 
 # variable sampling
-nvsamp <- 10
-acc_vec <- c()
-p_idx_list <- vector(mode = 'list', length = nvsamp)
+nvsamp <- 25
 
 vsamp_fn <- function(k) {
   
@@ -75,19 +73,75 @@ vsamp_fn <- function(k) {
   
 }
 
-for (iter in 1:nvsamp) {
+
+acc_idx_fn <- function(k, nvsamp) {
   
-  cat('\nGibbs function iteration', iter,
-      '\n')
+  acc_vec <- c()
+  z_idx_list <- vector(mode = 'list', length = nvsamp)
+  p_idx_list <- vector(mode = 'list', length = nvsamp)
   
-  s <- vsamp_fn(k)
-  acc_vec[iter] <- s$gibbs$accuracy
-  p_idx_list[[iter]] <- s$j_samp
+  iter <- 1
+  while (iter <= nvsamp) {
+    
+    cat('\nGibbs function iteration', iter,
+        '\n')
+    
+    s <- vsamp_fn(k)
+    acc_vec[iter] <- s$gibbs$accuracy
+    z_idx_list[[iter]] <- s$gibbs$zpred
+    p_idx_list[[iter]] <- s$j_samp
+    
+    iter <- iter + 1
+    
+  }
+  
+  m_idx <- which(acc_vec == max(acc_vec))
+  z_m <- z_idx_list[[m_idx]]
+  p_m <- p_idx_list[[m_idx]]
+  
+  out <- list(maxpred = acc_vec[m_idx],
+              z_maxpred = z_m,
+              p_maxpred = p_m)
+  return(out)
   
 }
 
+# get sampling results
+samp_res <- acc_idx_fn(k, nvsamp)
+samp_z <- samp_res$z_maxpred
+
+# TP and FP rate construction}
+j <- 1:max(z)
+zmax_idx <- lapply(j, function(i) which(samp_z == i))
+zpred_list <- lapply(j, function(i) z[zmax_idx[[i]]])
+tp <- sapply(j, function(i) sum(zpred_list[[i]] == i))
+tpr <- map2_dbl(tp, j, function(r, i) r/length(zpred_list[[i]])) %>% 
+  round(3)
+
+# confusion matrix construction
+conf_mat <- diag(tp)
+conf_mat_r <- diag(tpr)
+for (c in j) {
+  
+  jfp <- j[j != c]
+  
+  fp <- sapply(jfp, function(i) sum(zpred_list[[c]] == i))
+  fpr <- sapply(fp, function(r) r/length(zpred_list[[c]])) %>% 
+    round(3)
+  
+  conf_mat[c, jfp] <- fp
+  conf_mat_r[c, jfp] <- fpr
+  
+}
+
+jnames <- paste('J', j, sep = '')
+jprednames <- paste(jnames, '_hat', sep = '')
+conf_tbl <- data.frame(cbind(jprednames, conf_mat))
+colnames(conf_tbl) <- c('', jnames)
+conf_r_tbl <- data.frame(cbind(jprednames, conf_mat_r))
+colnames(conf_r_tbl) <- c('', jnames)
+
+
 
 # Testing -----------------------------------------------------------------
-
-
 
