@@ -109,6 +109,7 @@ gibbs_fn <- function(ngibb, X, p) {
   out <- list(accuracy = acc,
               zpred = z_hat,
               beta = beta_gibb,
+              beta_var = diag(Sigma1),
               delta = delta)
   return(out)
   
