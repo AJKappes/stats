@@ -25,9 +25,9 @@ source('bayesian_ord_gibbs_samp.R')
 # z: observed ordinal data, generated from inital y
 
 nsamp <- 500
-k <- 25
+k <- 20
 # initial p only used to generate y
-p <- 5
+p <- 7
 # aggregate X data matrix
 X_k <- get_x(k, nsamp)
 
@@ -57,9 +57,10 @@ cat('True X covariates indice:', p_idx,
     '\nBenchmark ordinal value prediction accuracy:', bench_acc,
     '\n')
 
-# variable sampling
+# variable sampling iterations
 nvsamp <- 25
 
+# random variable sampling
 vsamp_fn <- function(k) {
   
   p_samp <- sample(1:k, 1)
@@ -73,10 +74,25 @@ vsamp_fn <- function(k) {
   
 }
 
+# fixed variable sampling
+vsamp_fix_fn <- function(k, p) {
+  
+  p_samp <- sample(1:k, p)
+  X_samp <- X_k[, p_samp]
+  gibbs_samp <- gibbs_fn(ngibb, X_samp, length(p_samp))
+  
+  out <- list(gibbs = gibbs_samp,
+              j_samp = p_samp)
+  return(out)
+  
+}
 
-acc_idx_fn <- function(k, nvsamp) {
+acc_idx_fn <- function(k, nvsamp, vs, p = FALSE) {
   
   acc_vec <- c()
+  b_nonzero_vec <- c()
+  beta_list <- vector(mode = 'list', length = nvsamp)
+  beta_se_list <- vector(mode = 'list', length = nvsamp)
   z_idx_list <- vector(mode = 'list', length = nvsamp)
   p_idx_list <- vector(mode = 'list', length = nvsamp)
   
@@ -86,8 +102,34 @@ acc_idx_fn <- function(k, nvsamp) {
     cat('\nGibbs function iteration', iter,
         '\n')
     
-    s <- vsamp_fn(k)
+    if (vs == 'random') {
+      
+      s <- vsamp_fn(k)
+      
+    } else if (vs == 'fixed') {
+      
+      s <- vsamp_fix_fn(k, p)
+      
+    } else {
+      
+      stop('must designate vs = (random, fixed)')
+      
+    }
+    
+    b <- s$gibbs$beta
+    tcrit <- qt(1 - .05/2, nsamp - length(b))
+    b_se <- sqrt(s$gibbs$beta_var)
+    lb <- b - tcrit*b_se
+    ub <- b + tcrit*b_se
+    b_interval <- map2_dbl(lb, ub,
+                           function(l, u)
+                             (l < 0) & (0 < u)) %>%
+      sum()
+    
     acc_vec[iter] <- s$gibbs$accuracy
+    b_nonzero_vec[iter] <- b_interval
+    beta_list[[iter]] <- b
+    beta_se_list[[iter]] <- b_se
     z_idx_list[[iter]] <- s$gibbs$zpred
     p_idx_list[[iter]] <- s$j_samp
     
@@ -95,53 +137,77 @@ acc_idx_fn <- function(k, nvsamp) {
     
   }
   
+  
   m_idx <- which(acc_vec == max(acc_vec))
+  b_m <- beta_list[[m_idx]]
+  b_se_m <- beta_se_list[[m_idx]]
   z_m <- z_idx_list[[m_idx]]
   p_m <- p_idx_list[[m_idx]]
   
-  out <- list(maxpred = acc_vec[m_idx],
+  out <- list(accuracy = acc_vec,
+              max_idx = m_idx,
+              maxpred = acc_vec[m_idx],
+              b_nonzero = b_nonzero_vec,
+              b_maxpred = b_m,
+              b_se_maxpred = b_se_m,
               z_maxpred = z_m,
-              p_maxpred = p_m)
+              p_maxpred = p_m,
+              p_list = p_idx_list)
   return(out)
   
 }
 
-# get sampling results
-samp_res <- acc_idx_fn(k, nvsamp)
-samp_z <- samp_res$z_maxpred
-
-# TP and FP rate construction}
-j <- 1:max(z)
-zmax_idx <- lapply(j, function(i) which(samp_z == i))
-zpred_list <- lapply(j, function(i) z[zmax_idx[[i]]])
-tp <- sapply(j, function(i) sum(zpred_list[[i]] == i))
-tpr <- map2_dbl(tp, j, function(r, i) r/length(zpred_list[[i]])) %>% 
-  round(3)
-
-# confusion matrix construction
-conf_mat <- diag(tp)
-conf_mat_r <- diag(tpr)
-for (c in j) {
-  
-  jfp <- j[j != c]
-  
-  fp <- sapply(jfp, function(i) sum(zpred_list[[c]] == i))
-  fpr <- sapply(fp, function(r) r/length(zpred_list[[c]])) %>% 
-    round(3)
-  
-  conf_mat[c, jfp] <- fp
-  conf_mat_r[c, jfp] <- fpr
-  
-}
-
-jnames <- paste('J', j, sep = '')
-jprednames <- paste(jnames, '_hat', sep = '')
-conf_tbl <- data.frame(cbind(jprednames, conf_mat))
-colnames(conf_tbl) <- c('', jnames)
-conf_r_tbl <- data.frame(cbind(jprednames, conf_mat_r))
-colnames(conf_r_tbl) <- c('', jnames)
+# # get sampling results
+# samp_res <- acc_idx_fn(k, nvsamp)
+# samp_z <- samp_res$z_maxpred
+# 
+# # TP and FP rate construction}
+# j <- 1:max(z)
+# zmax_idx <- lapply(j, function(i) which(samp_z == i))
+# zpred_list <- lapply(j, function(i) z[zmax_idx[[i]]])
+# tp <- sapply(j, function(i) sum(zpred_list[[i]] == i))
+# tpr <- map2_dbl(tp, j, function(r, i) r/length(zpred_list[[i]])) %>% 
+#   round(3)
+# 
+# # confusion matrix construction
+# conf_mat <- diag(tp)
+# conf_mat_r <- diag(tpr)
+# for (c in j) {
+#   
+#   jfp <- j[j != c]
+#   
+#   fp <- sapply(jfp, function(i) sum(zpred_list[[c]] == i))
+#   fpr <- sapply(fp, function(r) r/length(zpred_list[[c]])) %>% 
+#     round(3)
+#   
+#   conf_mat[c, jfp] <- fp
+#   conf_mat_r[c, jfp] <- fpr
+#   
+# }
+# 
+# jnames <- paste('J', j, sep = '')
+# jprednames <- paste(jnames, '_hat', sep = '')
+# conf_tbl <- data.frame(cbind(jprednames, conf_mat))
+# colnames(conf_tbl) <- c('', jnames)
+# conf_r_tbl <- data.frame(cbind(jprednames, conf_mat_r))
+# colnames(conf_r_tbl) <- c('', jnames)
 
 
 
 # Testing -----------------------------------------------------------------
+p_samp <- 10
+samp_res <- acc_idx_fn(k, 5, 'fixed', p_samp)
+maxpred_acc <- samp_res$maxpred
+maxpred_vs <- samp_res$p_maxpred[samp_res$p_maxpred %in% p_idx]
+nonzero_m <- which(samp_res$b_nonzero == max(samp_res$b_nonzero))
+nonzero_vs <- samp_res$p_list[[nonzero_m]][samp_res$p_list[[nonzero_m]]
+                                           %in% p_idx]
+
+cat('Fixed sampling', p_samp, 'covariates from', k, 'possible',
+    '\nTrue X_i covariates:', p_idx,
+    '\nTrue variable selection from max prediction accuracy:', maxpred_vs,
+    '\nTrue variable selection from nonzero Gibbs beta 95%CI:', nonzero_vs,
+    '\nNumber of true covariates selected from max prediction:', length(maxpred_vs),
+    '\nNumber of true covariates selected from nonzero CI:', length(nonzero_vs),
+    '\nMax prediction accuracy:', maxpred_acc)
 
